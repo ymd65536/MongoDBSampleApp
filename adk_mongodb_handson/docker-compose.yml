@@ -1,0 +1,68 @@
+# MongoDB x Google ADK ハンズオン用 Docker Compose
+#
+# profile      port(既定)  用途
+# standalone   27117       単一 mongod。トランザクション非対応時のフォールバック確認
+# replicaset   27118       単一ノード レプリカセット。MongoDbSessionService 推奨構成
+# atlas-local  27119       Atlas Local (mongod + mongot)。Vector / Hybrid Search 用
+# auth         27120       認証 + 最小権限ユーザー (Level 4)
+#
+# 使い方: docker compose --profile replicaset up -d --wait
+x-mongo-healthy: &standalone-health
+  test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+  interval: 5s
+  timeout: 5s
+  retries: 20
+
+services:
+  mongo-standalone:
+    image: mongo:8.0
+    profiles: ["standalone"]
+    ports: ["${MONGO_STANDALONE_PORT:-27117}:27017"]
+    healthcheck: *standalone-health
+
+  mongo-rs:
+    image: mongo:8.0
+    profiles: ["replicaset"]
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports: ["${MONGO_RS_PORT:-27118}:27017"]
+    volumes: ["mongo-rs-data:/data/db"]
+    # 初回は rs.initiate を実行してから healthy になる (ホストからは directConnection=true で接続)
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { quit(rs.status().myState === 1 ? 0 : 1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}); quit(1) }"
+      interval: 3s
+      timeout: 10s
+      retries: 30
+
+  # Vector Search / $rankFusion (Hybrid Search) には 8.2 以降が必要 (8.0 では $rankFusion が不可)
+  mongo-atlas-local:
+    image: mongodb/mongodb-atlas-local:8.2
+    profiles: ["atlas-local"]
+    ports: ["${MONGO_ATLAS_LOCAL_PORT:-27119}:27017"]
+
+  mongo-auth:
+    image: mongo:8.0
+    profiles: ["auth"]
+    ports: ["${MONGO_AUTH_PORT:-27120}:27017"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?.env に MONGO_ROOT_USERNAME を設定してください}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?.env に MONGO_ROOT_PASSWORD を設定してください}
+      HANDSON_AUTH_DB: ${HANDSON_AUTH_DB:-adk_handson_auth}
+      ADK_APP_PASSWORD: ${ADK_APP_PASSWORD:?.env に ADK_APP_PASSWORD を設定してください}
+      ADK_READER_PASSWORD: ${ADK_READER_PASSWORD:?.env に ADK_READER_PASSWORD を設定してください}
+      ADK_NOINDEX_PASSWORD: ${ADK_NOINDEX_PASSWORD:?.env に ADK_NOINDEX_PASSWORD を設定してください}
+    volumes:
+      - ./mongo-init/init-auth.js:/docker-entrypoint-initdb.d/init-auth.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27017", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  mongo-rs-data:
