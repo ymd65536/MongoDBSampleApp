@@ -1,0 +1,64 @@
+name: adk-mongodb-handson
+
+on:
+  pull_request:
+    paths:
+      - "adk_mongodb_handson/**"
+      - ".github/workflows/adk-mongodb-handson.yml"
+  push:
+    branches: [main]
+    paths:
+      - "adk_mongodb_handson/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: adk_mongodb_handson
+
+jobs:
+  unit:
+    name: unit (MongoDB / 外部 API 不要)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: adk_mongodb_handson/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_unit.py -q
+
+  integration:
+    name: integration (Docker Compose の MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: adk_mongodb_handson/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: 一時パスワードを生成 (リポジトリに秘密情報を置かない)
+        run: |
+          {
+            echo "MONGO_ROOT_USERNAME=root"
+            for v in MONGO_ROOT_PASSWORD ADK_APP_PASSWORD ADK_READER_PASSWORD ADK_NOINDEX_PASSWORD; do
+              echo "$v=$(openssl rand -hex 16)"
+            done
+            echo "REQUIRE_MONGO=1"
+          } >> "$GITHUB_ENV"
+      - name: MongoDB を起動
+        run: docker compose --profile standalone --profile replicaset --profile atlas-local --profile auth up -d --wait
+      - name: pytest (live / slow を除く)
+        run: python -m pytest tests -q -m "not live and not slow"
+      - name: ログ (失敗時)
+        if: failure()
+        run: docker compose --profile standalone --profile replicaset --profile atlas-local --profile auth logs --tail=100
+      - if: always()
+        run: docker compose --profile standalone --profile replicaset --profile atlas-local --profile auth down -v

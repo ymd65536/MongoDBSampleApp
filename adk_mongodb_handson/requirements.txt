@@ -1,0 +1,10 @@
+# 検証時のバージョン (2026-11 時点)。Python 3.11 以上が必要 (google-adk の要件)。
+# MongoDbSessionService / MongoDbMemoryService / MongoDbToolset は google-adk 本体の
+# google.adk.integrations.mongodb に含まれ、[mongodb] extra で pymongo が入る。
+google-adk[mongodb]==2.14.0
+pymongo==4.19.0
+google-genai==2.34.0
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+python-dotenv==1.2.4
+pytest==9.2.0

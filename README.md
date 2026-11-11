@@ -648,3 +648,7 @@ brew services stop mongodb-community
 ## 📄 ライセンス
 
 MIT License
+
+## MongoDB × Google ADK 技術検証ハンズオン
+
+Google ADK の MongoDB 統合 (セッション永続化 / 長期記憶 / ベクトル・ハイブリッド検索) の検証ハンズオンは [adk_mongodb_handson/README.md](adk_mongodb_handson/README.md) を参照してください。
